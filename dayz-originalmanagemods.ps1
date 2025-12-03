@@ -1,84 +1,185 @@
-$ModDirFormat = $args[0]
+param(
+    [string]$ModDirFormat  # kept for AMP compatibility, ignored in this script
+)
 
-Set-Location -Path ".\dayz\223350"
+$ErrorActionPreference = "Stop"
 
-$workshopDir = ".\steamapps\workshop\content\221100"
+Write-Host "GATZ Manage Mods: starting..."
 
-if (Test-Path $workshopDir) {
-  Write-Output "Linking mods"
-  Get-ChildItem -Path $workshopDir -Directory | ForEach-Object {
-    $modDir = Join-Path -Path $workshopDir -ChildPath $_.Name
-    $modName = $null
+# Figure out paths based on where this script lives
+$scriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
+$serverRoot  = Join-Path $scriptDir "dayz\223350"
+$workshopDir = Join-Path $serverRoot "steamapps\workshop\content\221100"
+$serverKeys  = Join-Path $serverRoot "keys"
 
-    # Extract modName from meta.cpp
-    $metaCppPath = Join-Path -Path $modDir -ChildPath "meta.cpp"
-    if (Test-Path $metaCppPath) {
-      $metaMatch = Select-String -Path $metaCppPath -Pattern '^\s*name\s*=\s*"(.*?)"' -AllMatches
-      if ($metaMatch.Matches.Count -gt 0) {
-        $modName = $metaMatch.Matches[0].Groups[1].Value
-      }
-    }
-    
-    if (-not $modName) {
-      # Fallback: Try mod.cpp if meta.cpp does not contain a name
-      $modCppPath = Join-Path -Path $modDir -ChildPath "mod.cpp"
-      if (Test-Path $modCppPath) {
-        $modMatch = Select-String -Path $modCppPath -Pattern '^\s*name\s*=\s*"(.*?)"' -AllMatches
-        if ($modMatch.Matches.Count -gt 0) {
-          $modName = $modMatch.Matches[0].Groups[1].Value
-        }
-      }
-      
-      if (-not $modName) {
-        # Final fallback: Try fetching name from Steam workshop webpage if no name found
-        $modID = $_.Name
-        $steamPage = "https://steamcommunity.com/workshop/filedetails/?id=$modID"
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        $modName = (Invoke-WebRequest -UseBasicParsing -Uri $steamPage).Content |
-                   Select-String -Pattern '<div class="workshopItemTitle">([^<]*)</div>' |
-                   ForEach-Object { $_.Matches.Groups[1].Value } |
-                   Select-Object -First 1
-        
-        if (-not $modName) {
-          Write-Output "Error: Unable to retrieve name for workshop item $modID. Skipping"
-          return
-        }
-      }
-    }
-    
-    # Sanitize modName
-    $modName = $modName -replace '[\\/:*?"<>|]', '-'
-    
-    if ($ModDirFormat -eq "false") {
-      # Remove @name junction links
-      $symlinkName = Join-Path -Path "./" -ChildPath "@$modName"
-      if (Test-Path -LiteralPath $symlinkName) {
-        Remove-Item -LiteralPath $symlinkName -Force -Recurse
-      }
-      
-      # Create numbered junction links
-      $numLink = Join-Path -Path "./" -ChildPath $_.Name
-      if (Test-Path -LiteralPath $numLink) {
-        Remove-Item -LiteralPath $numLink -Force -Recurse
-      }
-      New-Item -ItemType Junction -Name $_.Name -Target $modDir -Force | Out-Null
-    } else {
-      # Remove numbered junction links
-      $numLink = Join-Path -Path "./" -ChildPath $_.Name
-      if (Test-Path -LiteralPath $numLink) {
-        Remove-Item -LiteralPath $numLink -Force -Recurse
-      }
-      
-      # Create @name junction links
-      $symlinkName = Join-Path -Path "./" -ChildPath "@$modName"
-      if (Test-Path -LiteralPath $symlinkName) {
-        Remove-Item -LiteralPath $symlinkName -Force -Recurse
-      }
-      New-Item -ItemType Junction -Name $symlinkName -Target $modDir -Force | Out-Null
-    }
-  }
-} else {
-  Write-Output "No mods to link"
+if (-not (Test-Path -LiteralPath $serverRoot)) {
+    Write-Host "ERROR: DayZ server root not found at '$serverRoot'."
+    exit 1
 }
 
+if (-not (Test-Path -LiteralPath $workshopDir)) {
+    Write-Host "No workshop content directory at '$workshopDir'. Nothing to do."
+    exit 0
+}
+
+# Ensure server keys folder exists
+if (-not (Test-Path -LiteralPath $serverKeys)) {
+    Write-Host "Creating server keys folder at '$serverKeys'..."
+    New-Item -ItemType Directory -Path $serverKeys -Force | Out-Null
+}
+
+Set-Location -LiteralPath $serverRoot
+Write-Host "Server root: $serverRoot"
+Write-Host "Workshop dir: $workshopDir"
+
+# Enumerate mod folders under the DayZ workshop content
+$mods = Get-ChildItem -LiteralPath $workshopDir -Directory -ErrorAction SilentlyContinue
+if (-not $mods -or $mods.Count -eq 0) {
+    Write-Host "No workshop mods found under '$workshopDir'."
+    exit 0
+}
+
+# Ensure TLS 1.2 when talking to Steam
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+} catch {
+    Write-Host "WARNING: Failed to set TLS12, continuing anyway."
+}
+
+function Get-ModNameFromMetaFiles {
+    param(
+        [string]$ModDir
+    )
+
+    # 1) meta.cpp: name = "Some Name"
+    $metaCppPath = Join-Path $ModDir "meta.cpp"
+    if (Test-Path -LiteralPath $metaCppPath) {
+        $metaMatch = Select-String -Path $metaCppPath -Pattern '^\s*name\s*=\s*"(.*?)"' -AllMatches -ErrorAction SilentlyContinue
+        if ($metaMatch -and $metaMatch.Matches.Count -gt 0) {
+            return $metaMatch.Matches[0].Groups[1].Value
+        }
+    }
+
+    # 2) mod.cpp: name = "Some Name"
+    $modCppPath = Join-Path $ModDir "mod.cpp"
+    if (Test-Path -LiteralPath $modCppPath) {
+        $modMatch = Select-String -Path $modCppPath -Pattern '^\s*name\s*=\s*"(.*?)"' -AllMatches -ErrorAction SilentlyContinue
+        if ($modMatch -and $modMatch.Matches.Count -gt 0) {
+            return $modMatch.Matches[0].Groups[1].Value
+        }
+    }
+
+    return $null
+}
+
+function Get-ModNameFromSteam {
+    param(
+        [string]$ModId
+    )
+
+    $steamPage = "https://steamcommunity.com/workshop/filedetails/?id=$ModId"
+
+    try {
+        $resp = Invoke-WebRequest -UseBasicParsing -Uri $steamPage -ErrorAction Stop
+    }catch {
+    	Write-Host ("  Failed to fetch Steam page for {0}: {1}" -f $ModId, $_.Exception.Message)
+    	return $null
+    }
+
+    $match = $resp.Content |
+        Select-String -Pattern '<div class="workshopItemTitle">([^<]*)</div>' |
+        Select-Object -First 1
+
+    if ($match -and $match.Matches.Count -gt 0) {
+        return $match.Matches[0].Groups[1].Value.Trim()
+    }
+
+    return $null
+}
+
+foreach ($modFolder in $mods) {
+    $modDir = $modFolder.FullName
+    $modId  = $modFolder.Name
+    Write-Host ""
+    Write-Host "Processing workshop mod ID $modId at '$modDir'..."
+
+    # 1) Try meta.cpp / mod.cpp
+    $modName = Get-ModNameFromMetaFiles -ModDir $modDir
+
+    # 2) Fallback to Steam page if needed
+    if (-not $modName) {
+        Write-Host "  No name found in meta/mod.cpp. Fetching from Steam..."
+        $modName = Get-ModNameFromSteam -ModId $modId
+    }
+
+    if (-not $modName) {
+        Write-Host "  ERROR: Unable to determine name for workshop item $modId. Skipping."
+        continue
+    }
+
+    # Sanitize for Windows filesystem
+    $modName = $modName -replace '[\\/:*?"<>|]', '-'
+    $destFolderName = "@$modName"
+    $destPath = Join-Path $serverRoot $destFolderName
+
+    # If a destination folder already exists, remove it so we overwrite with new version
+    if (Test-Path -LiteralPath $destPath) {
+        Write-Host "  Removing existing destination folder '$destPath'..."
+        Remove-Item -LiteralPath $destPath -Recurse -Force
+    }
+
+    Write-Host "  Moving mod '$modName' ($modId) -> '$destFolderName'..."
+    Move-Item -LiteralPath $modDir -Destination $destPath -Force
+
+    # ----------------------------------------------------------------------
+    # Copy .bikey files from mod's keys folder into server root 'keys' folder
+    # Folder name could be: keys, key, Keys, Key (case-insensitive)
+    # ----------------------------------------------------------------------
+    try {
+        $candidateKeyDirs = Get-ChildItem -LiteralPath $destPath -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^(?i)keys?$' }   # "key" or "keys", any case
+
+        if ($candidateKeyDirs -and $candidateKeyDirs.Count -gt 0) {
+            foreach ($keysDir in $candidateKeyDirs) {
+                $keysPath = $keysDir.FullName
+                Write-Host "  Found keys directory '$keysPath'. Copying .bikey files to '$serverKeys'..."
+
+                $bikeyFiles = Get-ChildItem -LiteralPath $keysPath -Filter "*.bikey" -File -Recurse -ErrorAction SilentlyContinue
+                foreach ($bikey in $bikeyFiles) {
+                    $destKeyPath = Join-Path $serverKeys $bikey.Name
+                    Copy-Item -LiteralPath $bikey.FullName -Destination $destKeyPath -Force
+                }
+            }
+        } else {
+            Write-Host "  No keys folder (key/keys) found in '$destPath'."
+        }
+    } catch {
+        Write-Host "  ERROR while copying .bikey files for mod '$modName' ($modId): $($_.Exception.Message)"
+    }
+}
+
+# After moving everything, check if workshopDir (content\221100) is now empty
+$remaining = Get-ChildItem -LiteralPath $workshopDir -Force -ErrorAction SilentlyContinue
+
+# $workshopDir = <serverRoot>\steamapps\workshop\content\221100
+# We want to delete the whole 'steamapps\workshop' folder once 221100 is empty
+$workshopRoot = Join-Path $serverRoot "steamapps\workshop"
+
+if (-not $remaining -or $remaining.Count -eq 0) {
+    Write-Host ""
+    Write-Host "DayZ workshop content '$workshopDir' is now empty."
+
+    if (Test-Path -LiteralPath $workshopRoot) {
+        Write-Host "Deleting workshop root directory '$workshopRoot'..."
+        Remove-Item -LiteralPath $workshopRoot -Recurse -Force
+    } else {
+        Write-Host "Workshop root directory '$workshopRoot' not found (already removed?)."
+    }
+} else {
+    Write-Host ""
+    Write-Host "DayZ workshop content '$workshopDir' is not empty; leaving workshop folder in place."
+}
+
+Write-Host ""
+Write-Host "GATZ Manage Mods: completed."
 exit 0
