@@ -12,6 +12,36 @@ $serverRoot  = Join-Path $scriptDir "dayz\223350"
 $workshopDir = Join-Path $serverRoot "steamapps\workshop\content\221100"
 $serverKeys  = Join-Path $serverRoot "keys"
 
+# ----------------------------------------------------------------------
+# Read Client+Server mod IDs from JSON written by the AMP plugin
+# ----------------------------------------------------------------------
+$jsonPath = Join-Path $scriptDir "ClientServerMods.json"
+[string[]]$ClientServerMods = @()
+
+if (Test-Path -LiteralPath $jsonPath) {
+    try {
+        $json = Get-Content -LiteralPath $jsonPath -Raw
+        if ($json) {
+            $ClientServerMods = $json | ConvertFrom-Json
+        }
+
+        if ($ClientServerMods.Count -gt 0) {
+            Write-Host "Client+Server workshop IDs (from ClientServerMods.json): $($ClientServerMods -join ', ')"
+        }
+        else {
+            Write-Host "ClientServerMods.json loaded but list is empty; all mods will be treated as client+server for key copy."
+        }
+    }
+    catch {
+        Write-Host "WARNING: Failed to read/parse ClientServerMods.json: $($_.Exception.Message)"
+        Write-Host "         All mods will be treated as client+server for key copy."
+        $ClientServerMods = @()
+    }
+}
+else {
+    Write-Host "ClientServerMods.json not found; all mods will be treated as client+server for key copy."
+}
+
 if (-not (Test-Path -LiteralPath $serverRoot)) {
     Write-Host "ERROR: DayZ server root not found at '$serverRoot'."
     exit 1
@@ -82,8 +112,8 @@ function Get-ModNameFromSteam {
     try {
         $resp = Invoke-WebRequest -UseBasicParsing -Uri $steamPage -ErrorAction Stop
     }catch {
-    	Write-Host ("  Failed to fetch Steam page for {0}: {1}" -f $ModId, $_.Exception.Message)
-    	return $null
+        Write-Host ("  Failed to fetch Steam page for {0}: {1}" -f $ModId, $_.Exception.Message)
+        return $null
     }
 
     $match = $resp.Content |
@@ -99,7 +129,7 @@ function Get-ModNameFromSteam {
 
 foreach ($modFolder in $mods) {
     $modDir = $modFolder.FullName
-    $modId  = $modFolder.Name
+    $modId  = [string]$modFolder.Name
     Write-Host ""
     Write-Host "Processing workshop mod ID $modId at '$modDir'..."
 
@@ -133,28 +163,40 @@ foreach ($modFolder in $mods) {
 
     # ----------------------------------------------------------------------
     # Copy .bikey files from mod's keys folder into server root 'keys' folder
-    # Folder name could be: keys, key, Keys, Key (case-insensitive)
+    # BUT ONLY for Client+Server mods if we have a list.
+    # If ClientServerMods list is empty, we behave like before (all mods).
     # ----------------------------------------------------------------------
-    try {
-        $candidateKeyDirs = Get-ChildItem -LiteralPath $destPath -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match '^(?i)keys?$' }   # "key" or "keys", any case
+    $shouldCopyKeys = $true
+    if ($ClientServerMods.Count -gt 0 -and -not ($ClientServerMods -contains $modId)) {
+        # We have a list, and this mod isn't in it -> treat as server-only
+        $shouldCopyKeys = $false
+    }
 
-        if ($candidateKeyDirs -and $candidateKeyDirs.Count -gt 0) {
-            foreach ($keysDir in $candidateKeyDirs) {
-                $keysPath = $keysDir.FullName
-                Write-Host "  Found keys directory '$keysPath'. Copying .bikey files to '$serverKeys'..."
+    if ($shouldCopyKeys) {
+        try {
+            $candidateKeyDirs = Get-ChildItem -LiteralPath $destPath -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^(?i)keys?$' }   # "key" or "keys", any case
 
-                $bikeyFiles = Get-ChildItem -LiteralPath $keysPath -Filter "*.bikey" -File -Recurse -ErrorAction SilentlyContinue
-                foreach ($bikey in $bikeyFiles) {
-                    $destKeyPath = Join-Path $serverKeys $bikey.Name
-                    Copy-Item -LiteralPath $bikey.FullName -Destination $destKeyPath -Force
+            if ($candidateKeyDirs -and $candidateKeyDirs.Count -gt 0) {
+                foreach ($keysDir in $candidateKeyDirs) {
+                    $keysPath = $keysDir.FullName
+                    Write-Host "  Found keys directory '$keysPath'. Copying .bikey files to '$serverKeys'..."
+
+                    $bikeyFiles = Get-ChildItem -LiteralPath $keysPath -Filter "*.bikey" -File -Recurse -ErrorAction SilentlyContinue
+                    foreach ($bikey in $bikeyFiles) {
+                        $destKeyPath = Join-Path $serverKeys $bikey.Name
+                        Copy-Item -LiteralPath $bikey.FullName -Destination $destKeyPath -Force
+                    }
                 }
+            } else {
+                Write-Host "  No keys folder (key/keys) found in '$destPath'."
             }
-        } else {
-            Write-Host "  No keys folder (key/keys) found in '$destPath'."
+        } catch {
+            Write-Host "  ERROR while copying .bikey files for mod '$modName' ($modId): $($_.Exception.Message)"
         }
-    } catch {
-        Write-Host "  ERROR while copying .bikey files for mod '$modName' ($modId): $($_.Exception.Message)"
+    }
+    else {
+        Write-Host "  Treating mod $modId as server-only; not copying .bikey files to '$serverKeys'."
     }
 }
 
