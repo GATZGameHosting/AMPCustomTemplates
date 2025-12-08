@@ -13,33 +13,46 @@ $workshopDir = Join-Path $serverRoot "steamapps\workshop\content\221100"
 $serverKeys  = Join-Path $serverRoot "keys"
 
 # ----------------------------------------------------------------------
-# Read Client+Server mod IDs from JSON written by the AMP plugin
+# Read Mods.json: ClientServerIds & ServerOnlyIds (both are ID arrays)
 # ----------------------------------------------------------------------
-$jsonPath = Join-Path $scriptDir "ClientServerMods.json"
-[string[]]$ClientServerMods = @()
+$modsJsonPath      = Join-Path $scriptDir "Mods.json"
+[string[]]$ClientServerIds = @()
+[string[]]$ServerOnlyIds   = @()
+$modsConfig = $null
 
-if (Test-Path -LiteralPath $jsonPath) {
+if (Test-Path -LiteralPath $modsJsonPath) {
     try {
-        $json = Get-Content -LiteralPath $jsonPath -Raw
-        if ($json) {
-            $ClientServerMods = $json | ConvertFrom-Json
-        }
+        $modsJsonText = Get-Content -LiteralPath $modsJsonPath -Raw
+        if ($modsJsonText) {
+            $modsConfig = $modsJsonText | ConvertFrom-Json
 
-        if ($ClientServerMods.Count -gt 0) {
-            Write-Host "Client+Server workshop IDs (from ClientServerMods.json): $($ClientServerMods -join ', ')"
-        }
-        else {
-            Write-Host "ClientServerMods.json loaded but list is empty; all mods will be treated as client+server for key copy."
+            if ($modsConfig.ClientServerIds) {
+                $ClientServerIds = @($modsConfig.ClientServerIds)
+            }
+            if ($modsConfig.ServerOnlyIds) {
+                $ServerOnlyIds = @($modsConfig.ServerOnlyIds)
+            }
+
+            if ($ClientServerIds.Count -gt 0 -or $ServerOnlyIds.Count -gt 0) {
+                Write-Host "Mods.json loaded."
+                Write-Host "  ClientServerIds: $($ClientServerIds -join ', ')"
+                Write-Host "  ServerOnlyIds  : $($ServerOnlyIds   -join ', ')"
+            }
+            else {
+                Write-Host "Mods.json loaded but ID arrays are empty; all mods will be treated as client+server for key copy."
+            }
         }
     }
     catch {
-        Write-Host "WARNING: Failed to read/parse ClientServerMods.json: $($_.Exception.Message)"
+        Write-Host "WARNING: Failed to read/parse Mods.json: $($_.Exception.Message)"
         Write-Host "         All mods will be treated as client+server for key copy."
-        $ClientServerMods = @()
+        $ClientServerIds = @()
+        $ServerOnlyIds   = @()
+        $modsConfig      = $null
     }
 }
 else {
-    Write-Host "ClientServerMods.json not found; all mods will be treated as client+server for key copy."
+    Write-Host "Mods.json not found; all mods will be treated as client+server for key copy."
 }
 
 if (-not (Test-Path -LiteralPath $serverRoot)) {
@@ -111,7 +124,7 @@ function Get-ModNameFromSteam {
 
     try {
         $resp = Invoke-WebRequest -UseBasicParsing -Uri $steamPage -ErrorAction Stop
-    }catch {
+    } catch {
         Write-Host ("  Failed to fetch Steam page for {0}: {1}" -f $ModId, $_.Exception.Message)
         return $null
     }
@@ -127,9 +140,13 @@ function Get-ModNameFromSteam {
     return $null
 }
 
+# Map: workshop ID -> @ModName (dest folder name)
+$IdToName = @{}
+
 foreach ($modFolder in $mods) {
     $modDir = $modFolder.FullName
     $modId  = [string]$modFolder.Name
+
     Write-Host ""
     Write-Host "Processing workshop mod ID $modId at '$modDir'..."
 
@@ -152,6 +169,9 @@ foreach ($modFolder in $mods) {
     $destFolderName = "@$modName"
     $destPath = Join-Path $serverRoot $destFolderName
 
+    # Remember mapping id -> @name for later JSON update
+    $IdToName[$modId] = $destFolderName
+
     # If a destination folder already exists, remove it so we overwrite with new version
     if (Test-Path -LiteralPath $destPath) {
         Write-Host "  Removing existing destination folder '$destPath'..."
@@ -163,13 +183,24 @@ foreach ($modFolder in $mods) {
 
     # ----------------------------------------------------------------------
     # Copy .bikey files from mod's keys folder into server root 'keys' folder
-    # BUT ONLY for Client+Server mods if we have a list.
-    # If ClientServerMods list is empty, we behave like before (all mods).
+    # Rules:
+    #   - If Mods.json had ID arrays, only copy for ClientServerIds.
+    #   - If Mods.json is missing/empty, treat all mods as client+server (copy keys).
     # ----------------------------------------------------------------------
     $shouldCopyKeys = $true
-    if ($ClientServerMods.Count -gt 0 -and -not ($ClientServerMods -contains $modId)) {
-        # We have a list, and this mod isn't in it -> treat as server-only
-        $shouldCopyKeys = $false
+
+    if ($ClientServerIds.Count -gt 0 -or $ServerOnlyIds.Count -gt 0) {
+        if ($ClientServerIds -contains $modId) {
+            $shouldCopyKeys = $true
+        }
+        elseif ($ServerOnlyIds -contains $modId) {
+            # Explicitly server-only
+            $shouldCopyKeys = $false
+        }
+        else {
+            # ID not in either list – treat as client+server by default
+            $shouldCopyKeys = $true
+        }
     }
 
     if ($shouldCopyKeys) {
@@ -191,7 +222,8 @@ foreach ($modFolder in $mods) {
             } else {
                 Write-Host "  No keys folder (key/keys) found in '$destPath'."
             }
-        } catch {
+        }
+        catch {
             Write-Host "  ERROR while copying .bikey files for mod '$modName' ($modId): $($_.Exception.Message)"
         }
     }
@@ -220,6 +252,37 @@ if (-not $remaining -or $remaining.Count -eq 0) {
 } else {
     Write-Host ""
     Write-Host "DayZ workshop content '$workshopDir' is not empty; leaving workshop folder in place."
+}
+
+# ----------------------------------------------------------------------
+# Update Mods.json with @names (keeping order) + ;-joined strings
+# ----------------------------------------------------------------------
+if ($modsConfig -ne $null) {
+    $ClientServerNames = @()
+    foreach ($id in $ClientServerIds) {
+        if ($IdToName.ContainsKey($id)) {
+            $ClientServerNames += $IdToName[$id]
+        }
+    }
+
+    $ServerOnlyNames = @()
+    foreach ($id in $ServerOnlyIds) {
+        if ($IdToName.ContainsKey($id)) {
+            $ServerOnlyNames += $IdToName[$id]
+        }
+    }
+
+    $modsConfig.ClientServerNames = $ClientServerNames
+    $modsConfig.ServerOnlyNames   = $ServerOnlyNames
+
+    # Also add ;-joined strings you can drop straight into configs
+    $modsConfig.ClientServerJoined = ($ClientServerNames -join ';')
+    $modsConfig.ServerOnlyJoined   = ($ServerOnlyNames   -join ';')
+
+    $modsConfig | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $modsJsonPath -Encoding UTF8
+
+    Write-Host ""
+    Write-Host "Updated Mods.json with name arrays and joined strings."
 }
 
 Write-Host ""
