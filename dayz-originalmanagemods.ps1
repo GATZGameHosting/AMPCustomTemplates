@@ -258,31 +258,34 @@ if (-not $remaining -or $remaining.Count -eq 0) {
 # Update Mods.json with @names (keeping order) + ;-joined strings
 # ----------------------------------------------------------------------
 if ($modsConfig -ne $null) {
-    $ClientServerNames = @()
-    foreach ($id in $ClientServerIds) {
-        if ($IdToName.ContainsKey($id)) {
-            $ClientServerNames += $IdToName[$id]
-        }
-    }
+	$ClientServerNames = @()
+	foreach ($id in $ClientServerIds) {
+		if ($IdToName.ContainsKey($id)) {
+			$ClientServerNames += $IdToName[$id]
+		}
+	}
 
-    $ServerOnlyNames = @()
-    foreach ($id in $ServerOnlyIds) {
-        if ($IdToName.ContainsKey($id)) {
-            $ServerOnlyNames += $IdToName[$id]
-        }
-    }
+	$ServerOnlyNames = @()
+	foreach ($id in $ServerOnlyIds) {
+		if ($IdToName.ContainsKey($id)) {
+			$ServerOnlyNames += $IdToName[$id]
+		}
+	}
 
-    $modsConfig.ClientServerNames = $ClientServerNames
-    $modsConfig.ServerOnlyNames   = $ServerOnlyNames
+	# New object that will replace Mods.json
+	$modsOut = [pscustomobject]@{
+		ClientServerIds    = $ClientServerIds
+		ServerOnlyIds      = $ServerOnlyIds
+		ClientServerNames  = $ClientServerNames
+		ServerOnlyNames    = $ServerOnlyNames
+		ClientServerJoined = ($ClientServerNames -join ';')
+		ServerOnlyJoined   = ($ServerOnlyNames   -join ';')
+	}
 
-    # Also add ;-joined strings you can drop straight into configs
-    $modsConfig.ClientServerJoined = ($ClientServerNames -join ';')
-    $modsConfig.ServerOnlyJoined   = ($ServerOnlyNames   -join ';')
+	$modsOut | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $modsJsonPath -Encoding UTF8
 
-    $modsConfig | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $modsJsonPath -Encoding UTF8
-
-    Write-Host ""
-    Write-Host "Updated Mods.json with name arrays and joined strings."
+	Write-Host ""
+	Write-Host "Updated Mods.json with name arrays and joined strings."
 }
 
 Write-Host ""
