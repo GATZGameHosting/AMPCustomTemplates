@@ -181,6 +181,33 @@ foreach ($modFolder in $mods) {
     Write-Host "  Moving mod '$modName' ($modId) -> '$destFolderName'..."
     Move-Item -LiteralPath $modDir -Destination $destPath -Force
 
+    # ------------------------------------------------------------------
+    # Determine whether this mod is server-only & manage sentinel file
+    # ------------------------------------------------------------------
+    $haveLists   = ($ClientServerIds.Count -gt 0 -or $ServerOnlyIds.Count -gt 0)
+    $isServerOnly = $false
+
+    if ($haveLists -and ($ServerOnlyIds -contains $modId)) {
+        $isServerOnly = $true
+    }
+
+    $serverOnlyFlag = Join-Path $destPath 'server_only.flag'
+
+    if ($isServerOnly) {
+        if (-not (Test-Path -LiteralPath $serverOnlyFlag)) {
+            New-Item -ItemType File -Path $serverOnlyFlag -Force | Out-Null
+            Write-Host "  Marked as server-only (server_only.flag created)."
+        } else {
+            Write-Host "  Already marked as server-only (server_only.flag present)."
+        }
+    }
+    else {
+        if (Test-Path -LiteralPath $serverOnlyFlag) {
+            Remove-Item -LiteralPath $serverOnlyFlag -Force
+            Write-Host "  Removed server_only.flag (no longer treated as server-only)."
+        }
+    }
+
     # ----------------------------------------------------------------------
     # Copy .bikey files from mod's keys folder into server root 'keys' folder
     # Rules:
@@ -258,34 +285,34 @@ if (-not $remaining -or $remaining.Count -eq 0) {
 # Update Mods.json with @names (keeping order) + ;-joined strings
 # ----------------------------------------------------------------------
 if ($modsConfig -ne $null) {
-	$ClientServerNames = @()
-	foreach ($id in $ClientServerIds) {
-		if ($IdToName.ContainsKey($id)) {
-			$ClientServerNames += $IdToName[$id]
-		}
-	}
+    $ClientServerNames = @()
+    foreach ($id in $ClientServerIds) {
+        if ($IdToName.ContainsKey($id)) {
+            $ClientServerNames += $IdToName[$id]
+        }
+    }
 
-	$ServerOnlyNames = @()
-	foreach ($id in $ServerOnlyIds) {
-		if ($IdToName.ContainsKey($id)) {
-			$ServerOnlyNames += $IdToName[$id]
-		}
-	}
+    $ServerOnlyNames = @()
+    foreach ($id in $ServerOnlyIds) {
+        if ($IdToName.ContainsKey($id)) {
+            $ServerOnlyNames += $IdToName[$id]
+        }
+    }
 
-	# New object that will replace Mods.json
-	$modsOut = [pscustomobject]@{
-		ClientServerIds    = $ClientServerIds
-		ServerOnlyIds      = $ServerOnlyIds
-		ClientServerNames  = $ClientServerNames
-		ServerOnlyNames    = $ServerOnlyNames
-		ClientServerJoined = ($ClientServerNames -join ';')
-		ServerOnlyJoined   = ($ServerOnlyNames   -join ';')
-	}
+    # New object that will replace Mods.json
+    $modsOut = [pscustomobject]@{
+        ClientServerIds    = $ClientServerIds
+        ServerOnlyIds      = $ServerOnlyIds
+        ClientServerNames  = $ClientServerNames
+        ServerOnlyNames    = $ServerOnlyNames
+        ClientServerJoined = ($ClientServerNames -join ';')
+        ServerOnlyJoined   = ($ServerOnlyNames   -join ';')
+    }
 
-	$modsOut | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $modsJsonPath -Encoding UTF8
+    $modsOut | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $modsJsonPath -Encoding UTF8
 
-	Write-Host ""
-	Write-Host "Updated Mods.json with name arrays and joined strings."
+    Write-Host ""
+    Write-Host "Updated Mods.json with name arrays and joined strings."
 }
 
 Write-Host ""
