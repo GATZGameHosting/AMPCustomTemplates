@@ -46,10 +46,12 @@ else {
 
 if (-not (Test-Path -LiteralPath $serverRoot)) {
     Write-Host "ERROR: DayZ server root not found at '$serverRoot'."
+	Write-Host "Mod management complete."
     exit 1
 }
 
 if (-not (Test-Path -LiteralPath $workshopDir)) {
+	Write-Host "Mod management complete."
     exit 0
 }
 
@@ -63,6 +65,7 @@ Set-Location -LiteralPath $serverRoot
 # Enumerate mod folders under the DayZ workshop content
 $mods = Get-ChildItem -LiteralPath $workshopDir -Directory -ErrorAction SilentlyContinue
 if (-not $mods -or $mods.Count -eq 0) {
+	Write-Host "Mod management complete."
     exit 0
 }
 
