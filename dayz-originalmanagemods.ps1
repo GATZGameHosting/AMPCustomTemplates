@@ -4,8 +4,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "GATZ Manage Mods: starting..."
-
 # Figure out paths based on where this script lives
 $scriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $serverRoot  = Join-Path $scriptDir "dayz\223350"
@@ -32,15 +30,6 @@ if (Test-Path -LiteralPath $modsJsonPath) {
             if ($modsConfig.ServerOnlyIds) {
                 $ServerOnlyIds = @($modsConfig.ServerOnlyIds)
             }
-
-            if ($ClientServerIds.Count -gt 0 -or $ServerOnlyIds.Count -gt 0) {
-                Write-Host "Mods.json loaded."
-                Write-Host "  ClientServerIds: $($ClientServerIds -join ', ')"
-                Write-Host "  ServerOnlyIds  : $($ServerOnlyIds   -join ', ')"
-            }
-            else {
-                Write-Host "Mods.json loaded but ID arrays are empty; all mods will be treated as client+server for key copy."
-            }
         }
     }
     catch {
@@ -61,24 +50,19 @@ if (-not (Test-Path -LiteralPath $serverRoot)) {
 }
 
 if (-not (Test-Path -LiteralPath $workshopDir)) {
-    Write-Host "No workshop content directory at '$workshopDir'. Nothing to do."
     exit 0
 }
 
 # Ensure server keys folder exists
 if (-not (Test-Path -LiteralPath $serverKeys)) {
-    Write-Host "Creating server keys folder at '$serverKeys'..."
     New-Item -ItemType Directory -Path $serverKeys -Force | Out-Null
 }
 
 Set-Location -LiteralPath $serverRoot
-Write-Host "Server root: $serverRoot"
-Write-Host "Workshop dir: $workshopDir"
 
 # Enumerate mod folders under the DayZ workshop content
 $mods = Get-ChildItem -LiteralPath $workshopDir -Directory -ErrorAction SilentlyContinue
 if (-not $mods -or $mods.Count -eq 0) {
-    Write-Host "No workshop mods found under '$workshopDir'."
     exit 0
 }
 
@@ -125,7 +109,6 @@ function Get-ModNameFromSteam {
     try {
         $resp = Invoke-WebRequest -UseBasicParsing -Uri $steamPage -ErrorAction Stop
     } catch {
-        Write-Host ("  Failed to fetch Steam page for {0}: {1}" -f $ModId, $_.Exception.Message)
         return $null
     }
 
@@ -147,15 +130,11 @@ foreach ($modFolder in $mods) {
     $modDir = $modFolder.FullName
     $modId  = [string]$modFolder.Name
 
-    Write-Host ""
-    Write-Host "Processing workshop mod ID $modId at '$modDir'..."
-
     # 1) Try meta.cpp / mod.cpp
     $modName = Get-ModNameFromMetaFiles -ModDir $modDir
 
     # 2) Fallback to Steam page if needed
     if (-not $modName) {
-        Write-Host "  No name found in meta/mod.cpp. Fetching from Steam..."
         $modName = Get-ModNameFromSteam -ModId $modId
     }
 
@@ -174,11 +153,9 @@ foreach ($modFolder in $mods) {
 
     # If a destination folder already exists, remove it so we overwrite with new version
     if (Test-Path -LiteralPath $destPath) {
-        Write-Host "  Removing existing destination folder '$destPath'..."
         Remove-Item -LiteralPath $destPath -Recurse -Force
     }
 
-    Write-Host "  Moving mod '$modName' ($modId) -> '$destFolderName'..."
     Move-Item -LiteralPath $modDir -Destination $destPath -Force
 
     # ------------------------------------------------------------------
@@ -196,15 +173,12 @@ foreach ($modFolder in $mods) {
     if ($isServerOnly) {
         if (-not (Test-Path -LiteralPath $serverOnlyFlag)) {
             New-Item -ItemType File -Path $serverOnlyFlag -Force | Out-Null
-            Write-Host "  Marked as server-only (server_only.flag created)."
         } else {
-            Write-Host "  Already marked as server-only (server_only.flag present)."
         }
     }
     else {
         if (Test-Path -LiteralPath $serverOnlyFlag) {
             Remove-Item -LiteralPath $serverOnlyFlag -Force
-            Write-Host "  Removed server_only.flag (no longer treated as server-only)."
         }
     }
 
@@ -238,7 +212,6 @@ foreach ($modFolder in $mods) {
             if ($candidateKeyDirs -and $candidateKeyDirs.Count -gt 0) {
                 foreach ($keysDir in $candidateKeyDirs) {
                     $keysPath = $keysDir.FullName
-                    Write-Host "  Found keys directory '$keysPath'. Copying .bikey files to '$serverKeys'..."
 
                     $bikeyFiles = Get-ChildItem -LiteralPath $keysPath -Filter "*.bikey" -File -Recurse -ErrorAction SilentlyContinue
                     foreach ($bikey in $bikeyFiles) {
@@ -247,7 +220,7 @@ foreach ($modFolder in $mods) {
                     }
                 }
             } else {
-                Write-Host "  No keys folder (key/keys) found in '$destPath'."
+                Write-Host "  No bikey found for '$modName'."
             }
         }
         catch {
@@ -255,7 +228,6 @@ foreach ($modFolder in $mods) {
         }
     }
     else {
-        Write-Host "  Treating mod $modId as server-only; not copying .bikey files to '$serverKeys'."
     }
 }
 
@@ -267,18 +239,12 @@ $remaining = Get-ChildItem -LiteralPath $workshopDir -Force -ErrorAction Silentl
 $workshopRoot = Join-Path $serverRoot "steamapps\workshop"
 
 if (-not $remaining -or $remaining.Count -eq 0) {
-    Write-Host ""
-    Write-Host "DayZ workshop content '$workshopDir' is now empty."
 
     if (Test-Path -LiteralPath $workshopRoot) {
-        Write-Host "Deleting workshop root directory '$workshopRoot'..."
         Remove-Item -LiteralPath $workshopRoot -Recurse -Force
     } else {
-        Write-Host "Workshop root directory '$workshopRoot' not found (already removed?)."
     }
 } else {
-    Write-Host ""
-    Write-Host "DayZ workshop content '$workshopDir' is not empty; leaving workshop folder in place."
 }
 
 # ----------------------------------------------------------------------
@@ -310,11 +276,8 @@ if ($modsConfig -ne $null) {
     }
 
     $modsOut | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $modsJsonPath -Encoding UTF8
-
-    Write-Host ""
-    Write-Host "Updated Mods.json with name arrays and joined strings."
 }
 
 Write-Host ""
-Write-Host "GATZ Manage Mods: completed."
+Write-Host "Mod management complete."
 exit 0
