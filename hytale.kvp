@@ -21,7 +21,7 @@ Meta.Prerequisites=[]
 Meta.ExtraContainerPackages=[]
 Meta.ConfigReleaseState=NotSpecified
 Meta.NoCommercialUsage=False
-Meta.ConfigVersion=5
+Meta.ConfigVersion=9
 Meta.ReleaseNotes=
 Meta.BreakingReleaseNotes=
 Meta.AppConfigId=36d2e805-a54d-4a40-acc9-c101c720ae05
@@ -29,14 +29,14 @@ Meta.ImportableExtensions=[]
 Meta.AppIsMultiIPAware=True
 App.DisplayName=Hytale
 App.RootDir=./hytale/
-App.BaseDirectory=./hytale/Server
+App.BaseDirectory=./hytale/Server/
 App.SteamWorkshopDownloadLocation=
 App.ExecutableWin={{JavaVersionWindows}}
 App.ExecutableLinux={{JavaVersionLinux}}
 App.WorkingDir=Server
 App.LinuxCommandLineArgs=
 App.WindowsCommandLineArgs=
-App.CommandLineArgs=-Xms{{MinMemory}}M -Xmx{{MaxMemory}}M {{EnableAOTCache}}{{JavaArgs}} -jar HytaleServer.jar --assets ../Assets.zip --bind {{$ApplicationIPBinding}}:{{$ServerPort}} --backup-dir ./backups {{accept-early-plugins}}{{allow-op}}{{backup}}{{disable-sentry}}{{$FormattedArgs}} {{CustomArgs}}
+App.CommandLineArgs=-Xms{{MinMemory}}M -Xmx{{MaxMemory}}M {{EnableAOTCache}}{{JavaArgs}} -Dterminal.jline=false -Dterminal.ansi=true -jar HytaleServer.jar --assets ./Assets.zip --bind {{$ApplicationIPBinding}}:{{$ServerPort}} --backup-dir "{{backup-dir}}" {{accept-early-plugins}}{{allow-op}}{{backup}}{{disable-sentry}}{{$FormattedArgs}} {{CustomArgs}}
 App.UseLinuxIOREDIR=False
 App.AppSettings={}
 App.EnvironmentVariables={"HYTALE_SERVER_SESSION_TOKEN":"{{session-token}}","HYTALE_SERVER_IDENTITY_TOKEN":"{{identity-token}}"}
@@ -79,7 +79,7 @@ App.TelnetLoginFormat={0}
 App.TelnetNewLineType=Default
 App.TailLogFilePath=server.log
 App.UpdateSources=@IncludeJson[hytaleupdates.json]
-App.PreStartStages=[]
+App.PreStartStages=@IncludeJson[hytalestart.json]
 App.CommandTriggers={"^Token Source: Not authenticated$":"/auth login device","^\\[.+?\\]\\s+\\[HytaleServer]\\s+No server tokens configured. Use \\/auth login to authenticate.$":"/auth login device","^To persist credentials, run: \\/auth persistence <type>$":"/auth persistence Encrypted"}
 App.UserActions=[]
 App.ForceUpdate=False
@@ -100,9 +100,9 @@ Console.FilterMatchRegex=
 Console.FilterMatchReplacement=
 Console.ThrowawayMessageRegex=^(WARNING|ERROR): Shader.+$
 Console.AppReadyRegex=^\[[\d\/]+ [\d:]+\s+INFO\]\s+\[HytaleServer\]\s+Hytale Server Booted! \[Multiplayer(?:, Fresh Universe)?\] took .*$
-Console.UserJoinRegex=^\[[\d\/]+ [\d:]+\s+INFO\]\s+\[HandshakeHandler\]\s+Mutual authentication complete for\s+(?<username>.+?)\s+\((?<userid>.+?)\)\s+from\s+.+?\s+\(\/(?<endpoint>(?:\d{1,3}(?:\.\d{1,3}){3})|(?:[0-9a-fA-F:]+)):\d+,\s*streamId=\d+\)\s*$
-Console.UserLeaveRegex=^\[[\d\/]+ [\d:]+\s+INFO\]\s+\[Hytale\]\s+(?<userid>.+?)\s+-\s+(?<username>.+?)\s+at\s+.+?\s+\(\/(?<endpoint>(?:\d{1,3}(?:\.\d{1,3}){3})|(?:[0-9a-fA-F:]+)):\d+,\s*streamId=\d+\)\s+left with reason:\s+.*$
-Console.UserChatRegex=^\[[\d\/]+ [\d:]+\s+INFO\]\s+\[Hytale\]\s+(?<username>.+?):\s+(?<message>.+?)$
+Console.UserJoinRegex=^\[[\d\/]+ [\d:]+\s+INFO\]\s+\[HandshakeHandler\]\s+Mutual authentication complete for\s+(?<username>[^ ]+?)\s+\((?<userid>.+?)\)\s+from\s+.+?\s+\(\/(?<endpoint>(?:\d{1,3}(?:\.\d{1,3}){3})|(?:[0-9a-fA-F:]+)):\d+,\s*streamId=\d+\)\s*$
+Console.UserLeaveRegex=^\[[\d\/]+\s+[\d:]+\s+INFO\]\s+(?:\[Universe\|P\]\s+Removing player\s+'(?<username>[^ ]+?)'\s+\((?<userid>[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})\)|\[Hytale\]\s+\{Setup\(null\s+\(null,\s*streamId=\d+\)\),\s*(?<username>[^ ]+?),\s*(?<userid>[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}),\s*SECURE\}\s+was closed\.)\s*$
+Console.UserChatRegex=^\[[\d\/]+\s+[\d:]+\s+INFO\]\s+\[Hytale\]\s+(?<username>[^ ]+?):\s+(?<message>.+?)$
 Console.UpdateAvailableRegex=^\[\d\d:\d\d:\d\d\] \[INFO\] A new server update is available! v[\d\.]+.$
 Console.PreConnectRegex=
 Console.ConnectIPRegex=
@@ -110,6 +110,8 @@ Console.MetricsRegex=
 Console.ServerInfoRegex=
 Console.ServerAuthURLPromptRegex=^(\[.+?\]\s+\[AbstractCommand]\s+Or visit: )?(?<url>https:\/\/oauth\.accounts\.hytale\.com\/oauth2\/device\/verify\?user_code=.+)$
 Console.ServerAuthAckRegex=^downloading latest \(\".+?\" patchline\) to \"(.+?.zip)"|\[.+?\]\s+\[ServerAuthManager] Authentication successful! Mode: OAUTH_DEVICE$
+Console.ConsoleFormatRegex=^\[[\d\/\: ]+(?<type>.+?)\]\s+\[(?<source>.+?)\] (?<contents>.+)$
+Console.DownloadProgressRegex=^(\[=*\s*\] (?<percent>[\d.]+%) \((?<progressValue>[\d.]*) (?<progressUnits>[KMG]B) \/ (?<totalValue>[\d.]*) (?<totalUnits>[KMG]B)\)|#*\s*(?<percent>[\d.]+%))$
 Console.HideFromConsoleRegex=
 Console.SuppressLogAtStart=False
 Console.UserActions={}
