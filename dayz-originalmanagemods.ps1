@@ -17,11 +17,12 @@ $modsJsonPath      = Join-Path $scriptDir "Mods.json"
 [string[]]$ClientServerIds = @()
 [string[]]$ServerOnlyIds   = @()
 $modsConfig = $null
+$modsJsonHasLists = $false
 
 if (Test-Path -LiteralPath $modsJsonPath) {
     try {
         $modsJsonText = Get-Content -LiteralPath $modsJsonPath -Raw
-        if ($modsJsonText) {
+        if ($modsJsonText -and $modsJsonText.Trim()) {
             $modsConfig = $modsJsonText | ConvertFrom-Json
 
             if ($modsConfig.ClientServerIds) {
@@ -29,6 +30,10 @@ if (Test-Path -LiteralPath $modsJsonPath) {
             }
             if ($modsConfig.ServerOnlyIds) {
                 $ServerOnlyIds = @($modsConfig.ServerOnlyIds)
+            }
+
+            if ($ClientServerIds.Count -gt 0 -or $ServerOnlyIds.Count -gt 0) {
+                $modsJsonHasLists = $true
             }
         }
     }
@@ -38,6 +43,7 @@ if (Test-Path -LiteralPath $modsJsonPath) {
         $ClientServerIds = @()
         $ServerOnlyIds   = @()
         $modsConfig      = $null
+        $modsJsonHasLists = $false
     }
 }
 else {
@@ -61,6 +67,23 @@ if (-not (Test-Path -LiteralPath $serverKeys)) {
 }
 
 Set-Location -LiteralPath $serverRoot
+
+$ServerOnlyNameSet = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+if (-not $modsJsonHasLists) {
+    try {
+        $existingModFolders = Get-ChildItem -LiteralPath $serverRoot -Directory -Filter "@*" -ErrorAction SilentlyContinue
+        foreach ($f in $existingModFolders) {
+            $flagPath = Join-Path $f.FullName "server_only.flag"
+            if (Test-Path -LiteralPath $flagPath) {
+                [void]$ServerOnlyNameSet.Add($f.Name)  # store '@ModName'
+            }
+        }
+    }
+    catch {
+		Write-Host "WARNING: server_only.flag scan failed: $($_.Exception.Message)"
+    }
+}
 
 # Enumerate mod folders under the DayZ workshop content
 $mods = Get-ChildItem -LiteralPath $workshopDir -Directory -ErrorAction SilentlyContinue
@@ -164,12 +187,19 @@ foreach ($modFolder in $mods) {
     # ------------------------------------------------------------------
     # Determine whether this mod is server-only & manage sentinel file
     # ------------------------------------------------------------------
-    $haveLists   = ($ClientServerIds.Count -gt 0 -or $ServerOnlyIds.Count -gt 0)
-    $isServerOnly = $false
+	$isServerOnly = $false
 
-    if ($haveLists -and ($ServerOnlyIds -contains $modId)) {
-        $isServerOnly = $true
-    }
+	if ($modsJsonHasLists) {
+		if ($ServerOnlyIds -contains $modId) {
+			$isServerOnly = $true
+		}
+	}
+	else {
+		# Mods.json has no lists: preserve server-only by matching '@ModName'
+		if ($ServerOnlyNameSet.Contains($destFolderName)) {
+			$isServerOnly = $true
+		}
+	}
 
     $serverOnlyFlag = Join-Path $destPath 'server_only.flag'
 
@@ -191,21 +221,7 @@ foreach ($modFolder in $mods) {
     #   - If Mods.json had ID arrays, only copy for ClientServerIds.
     #   - If Mods.json is missing/empty, treat all mods as client+server (copy keys).
     # ----------------------------------------------------------------------
-    $shouldCopyKeys = $true
-
-    if ($ClientServerIds.Count -gt 0 -or $ServerOnlyIds.Count -gt 0) {
-        if ($ClientServerIds -contains $modId) {
-            $shouldCopyKeys = $true
-        }
-        elseif ($ServerOnlyIds -contains $modId) {
-            # Explicitly server-only
-            $shouldCopyKeys = $false
-        }
-        else {
-            # ID not in either list – treat as client+server by default
-            $shouldCopyKeys = $true
-        }
-    }
+    $shouldCopyKeys = (-not $isServerOnly)
 
     if ($shouldCopyKeys) {
         try {
