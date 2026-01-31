@@ -348,6 +348,7 @@
         "FieldName": "verifySignatures",
         "InputType": "number",
         "MinValue": "0",
+        "MaxValue": "2",
         "IsFlagArgument": false,
         "ParamFieldName": "verifySignatures",
         "IncludeInCommandLine": false,
