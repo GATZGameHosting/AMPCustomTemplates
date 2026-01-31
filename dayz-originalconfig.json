@@ -340,24 +340,6 @@
         }
     },
     {
-        "DisplayName": "Verify Signatures",
-        "Category": "DayZ:stadia_controller",
-        "Subcategory": "Server:dns:1",
-        "Description": "Verifies .pbos against .bisign files. (only 2 is supported)",
-        "Keywords": "verify,signitures,verifysignitures",
-        "FieldName": "verifySignatures",
-        "InputType": "number",
-        "MinValue": "0",
-        "MaxValue": "2",
-        "IsFlagArgument": false,
-        "ParamFieldName": "verifySignatures",
-        "IncludeInCommandLine": false,
-        "DefaultValue": "2",
-        "Placeholder": "2",
-        "Suffix": "signatures",
-        "EnumValues": {}
-    },
-    {
         "DisplayName": "Force Same Build",
         "Category": "DayZ:stadia_controller",
         "Subcategory": "Server:dns:1",
