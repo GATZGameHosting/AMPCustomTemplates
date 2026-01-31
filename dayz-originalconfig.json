@@ -345,7 +345,7 @@
         "Subcategory": "Server:dns:1",
         "Description": "Verifies .pbos against .bisign files. (only 2 is supported)",
         "Keywords": "verify,signitures,verifysignitures",
-        "FieldName": "$VerifySignitures",
+        "FieldName": "verifySignitures",
         "InputType": "number",
         "MinValue": "0",
         "IsFlagArgument": false,
@@ -353,7 +353,6 @@
         "IncludeInCommandLine": false,
         "DefaultValue": "2",
         "Placeholder": "2",
-        "Suffix": "signitures",
         "EnumValues": {}
     },
     {
