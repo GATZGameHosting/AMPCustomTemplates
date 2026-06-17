@@ -1,0 +1,47 @@
+[
+     {
+         "UpdateStageName": "Steam Appmanifest Seed Script Download",
+         "UpdateSourcePlatform": "Windows",
+         "UpdateSource": "FetchURL",
+         "UpdateSourceData": "https://raw.githubusercontent.com/tlz1984/AMPCustomTemplates/main/seed-steam-appmanifest.ps1",
+         "UpdateSourceArgs": "seed-steam-appmanifest.ps1",
+         "UpdateSourceTarget": "{{$FullInstanceDir}}",
+         "OverwriteExistingFiles": true,
+         "SkipOnFailure": false
+     },
+     {
+         "UpdateStageName": "Steam Appmanifest Seed",
+         "UpdateSourcePlatform": "Windows",
+         "UpdateSource": "Executable",
+         "UpdateSourceData": "powershell.exe",
+         "UpdateSourceArgs": "-NoProfile -ExecutionPolicy Bypass -File \"{{$FullInstanceDir}}seed-steam-appmanifest.ps1\" -SteamAppsDir \"{{$FullBaseDir}}steamapps\" -LauncherPath \"{{$FullInstanceDir}}conan-exiles\\steamcmd.exe\" -AppId \"443030\" -AppName \"Conan Exiles Dedicated Server\" -InstallDir \"Conan Exiles Dedicated Server\"",
+         "SkipOnFailure": false
+     },
+     {
+        "UpdateStageName": "SteamCMD Download",
+        "UpdateSourcePlatform": "All",
+        "UpdateSource": "SteamCMD",
+        "UpdateSourceData": "443030",
+        "UpdateSourceArgs": "440900",
+        "SkipOnFailure": false
+     },
+     {
+      "UpdateStageName": "GATZLimiter Download",
+      "UpdateSourcePlatform": "All",
+      "UpdateSource": "FetchURL",
+      "UpdateSourceData": "https://github.com/tlz1984/AMPCustomTemplates/releases/download/Limiter/GATZLimiter.zip",
+      "UpdateSourceArgs": "GATZLimiter.zip",
+      "UpdateSourceTarget": "{{$FullInstanceDir}}",
+      "UnzipUpdateSource": true,
+      "OverwriteExistingFiles": true,
+      "DeleteAfterExtract": true,
+      "SkipOnFailure": false
+    },
+    {
+        "UpdateStageName": "Config Directory Creation",
+        "UpdateSourcePlatform": "Windows",
+        "UpdateSource": "CreateDirectory",
+        "UpdateSourceArgs": "{{$FullBaseDir}}ConanSandbox/Saved/Config/WindowsServer",
+        "SkipOnFailure": false
+    }
+]
